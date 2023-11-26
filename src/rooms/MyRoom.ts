@@ -56,21 +56,12 @@ export class MyRoom extends Room<MyRoomState> {
     }, 1000);
     this.onMessage("updatePlayer", (client, input) => {
       const player = this.state.players.get(client.sessionId);
-      const velocity = 2;
-
+      console.log(player, "PLAYER");
+      if (!player || !input?.x || !input?.y) return;
+      player.x = input.x;
+      player.y = input.y;
       player.animation = input.animation;
-      if (input.left) {
-        player.x -= velocity;
-      } else if (input.right) {
-        player.x += velocity;
-      }
-      if (input.up) {
-        player.y -= velocity;
-      } else if (input.down) {
-        player.y += velocity;
-      }
     });
-
     this.onMessage("updateTrash", (client, input) => {
       const { trashId, trashX, trashY } = input;
 

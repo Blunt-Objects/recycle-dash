@@ -60,26 +60,15 @@ export default class Game extends Phaser.Scene {
 
   currentPlayer!: PlayerWithPhysics;
   remoteRef!: Phaser.GameObjects.Rectangle;
-
-  inputPayload: InputPayloadType = {
-    left: false,
-    right: false,
-    up: false,
-    down: false,
-    animation: "down-idle-0",
-  };
-  trashPayLoad: TrashInputPayLoadType = {
-    left: false,
-    right: false,
-    up: false,
-    down: false,
-    trashItem: null,
-  };
   cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
 
   countdown: any;
   canBeCarried: boolean = false;
-  activeTrash!: Trash | null;
+  activeTrash!:
+    | (Trash & { [key: string]: (num?: number) => void } & {
+        data: { list: { [key: string]: string } };
+      })
+    | null;
   preload() {
     this.load.image(
       "gameBackground",
@@ -393,7 +382,6 @@ export default class Game extends Phaser.Scene {
       }
     }
 
-    this.room.send("updatePlayer", this.inputPayload);
     const spaceJustPressed = Phaser.Input.Keyboard.JustUp(
       this.cursorKeys.space
     );
@@ -556,7 +544,7 @@ export default class Game extends Phaser.Scene {
       if (correctBin[holding] === bin) {
         console.log("Yay! Correct bin!!");
         this.room.send("deleteTrash", this.activeTrash?.data.list.id);
-        this.activeTrash.destroy();
+        this.activeTrash && this.activeTrash.destroy();
         this.activeTrash = null;
         this.currentPlayer.holding = false;
       } else {
