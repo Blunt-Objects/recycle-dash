@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { Client, Room } from "colyseus.js";
+import { Body } from "matter";
 //types
 
 type Player = {
@@ -32,11 +33,11 @@ type InputPayloadType = {
   right: boolean;
   up: boolean;
   down: boolean;
-  animation: string | null;
+  animation: string | null | Body;
 };
 type PlayerWithPhysics = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   playerNumber?: number;
-};
+} & { holding?: boolean };
 export default class Game extends Phaser.Scene {
   state: any;
   constructor() {
@@ -60,8 +61,8 @@ export default class Game extends Phaser.Scene {
   trashEntities: { [key: string]: any } = {};
   cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
 
-  canBeCarried = false;
-  activeTrash!: Trash;
+  canBeCarried: boolean = false;
+  activeTrash!: Trash | null;
 
   preload() {
     this.load.image("gameBackground", "https://i.ibb.co/khH5sZ0/map.png");
@@ -88,8 +89,17 @@ export default class Game extends Phaser.Scene {
     const imageX = trashCanItem.x + rectWidth / 2;
     const imageY = trashCanItem.y + rectHeight / 2;
 
-    const image = this.add.image(imageX, imageY, trashCanItem.type);
-
+    const image = this.physics.add.image(imageX, imageY, trashCanItem.type);
+    image.setInteractive();
+    Object.values(this.playerEntities).forEach((player: PlayerWithPhysics) => {
+      this.physics.add.collider(
+        player,
+        image,
+        this.handleTrashCanCollision,
+        undefined,
+        this
+      );
+    });
     this.trashCanEntities[key] = graphics;
   }
   private createTrash(trashItem: any, key: string) {
@@ -126,9 +136,39 @@ export default class Game extends Phaser.Scene {
 
   private handleTrashCollision(player, trash) {
     // in here will need to set something on trash to be true to complete a check in the update controllers to allow user to grab that item
+
     console.log("collide");
-    console.log(player);
-    console.log(trash);
+    if (this.activeTrash) {
+      return;
+    }
+    this.activeTrash = trash;
+    // console.log(trash);
+  }
+
+  private handleTrashCanCollision(player, trashCan) {
+    console.log("found a bin");
+    if (this.currentPlayer.holding) {
+      console.log(this.activeTrash);
+      this.activeTrash.destroy();
+      this.activeTrash = null;
+      this.currentPlayer.holding = false;
+    }
+  }
+  updateActiveTrash() {
+    if (!this.activeTrash) {
+      return;
+    }
+    const distance = Phaser.Math.Distance.Between(
+      this.currentPlayer.x,
+      this.currentPlayer.y,
+      this.activeTrash.x,
+      this.activeTrash.y
+    );
+
+    if (distance < 64) {
+      return;
+    }
+    this.activeTrash = null;
   }
 
   async create() {
@@ -209,6 +249,7 @@ export default class Game extends Phaser.Scene {
     if (!this.room) {
       return;
     }
+    this.updateActiveTrash();
 
     const animNum: number = this.currentPlayer.playerNumber || 0;
 
@@ -225,17 +266,21 @@ export default class Game extends Phaser.Scene {
     if (this.inputPayload.left) {
       this.currentPlayer.play(`left-walk-${animNum}`, true);
       this.currentPlayer.x -= velocity;
+      this.activeTrash?.pickedUp ? (this.activeTrash.x -= velocity) : null;
     } else if (this.inputPayload.right) {
       this.currentPlayer.play(`right-walk-${animNum}`, true);
       this.currentPlayer.x += velocity;
+      this.activeTrash?.pickedUp ? (this.activeTrash.x += velocity) : null;
     }
 
     if (this.inputPayload.up) {
       this.currentPlayer.play(`up-walk-${animNum}`, true);
       this.currentPlayer.y -= velocity;
+      this.activeTrash?.pickedUp ? (this.activeTrash.y -= velocity) : null;
     } else if (this.inputPayload.down) {
       this.currentPlayer.play(`down-walk-${animNum}`, true);
       this.currentPlayer.y += velocity;
+      this.activeTrash?.pickedUp ? (this.activeTrash.y += velocity) : null;
     } else {
       this.currentPlayer.setVelocity(0, 0);
 
@@ -253,9 +298,16 @@ export default class Game extends Phaser.Scene {
     const spaceJustPressed = Phaser.Input.Keyboard.JustUp(
       this.cursorKeys.space
     );
-    if (spaceJustPressed) {
-      console.log("grabby");
-      console.log(this.activeTrash);
+
+    if (spaceJustPressed && this.activeTrash) {
+      this.activeTrash.pickedUp = true;
+      this.currentPlayer.holding = true;
+      console.log(this.activeTrash.pickedUp);
+      console.log("x pos : ", this.activeTrash.x);
+      console.log("y pos : ", this.activeTrash.y);
+      this.activeTrash.x = this.currentPlayer.x;
+      this.activeTrash.y = this.currentPlayer.y;
+      console.log("gotcha");
     }
 
     this.room.send("updatePlayer", this.inputPayload);
