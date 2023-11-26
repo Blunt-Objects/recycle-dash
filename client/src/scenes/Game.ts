@@ -1,12 +1,14 @@
 import Phaser from "phaser";
 import { Client, Room } from "colyseus.js";
+//types
 
 type Player = {
   x: number;
   y: number;
   animation: string | null;
   inputQueue: any;
-  onChange: any; //MUST fix this cannot put an any type in front of Johnny and Haz
+  onChange: any; //MUST fix this cannot put an any type in front of Johnny and Haz;
+  holdingItem: boolean;
 };
 type TrashCan = {
   x: number;
@@ -40,7 +42,7 @@ export default class Game extends Phaser.Scene {
   constructor() {
     super("game");
   }
-
+  // properties
   currentPlayer!: PlayerWithPhysics;
   remoteRef!: Phaser.GameObjects.Rectangle;
 
@@ -51,8 +53,15 @@ export default class Game extends Phaser.Scene {
     down: false,
     animation: "down-idle-0",
   };
+  client = new Client("ws://localhost:2567");
 
+  playerEntities: { [sessionId: string]: any } = {};
+  trashCanEntities: { [key: string]: any } = {};
+  trashEntities: { [key: string]: any } = {};
   cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
+
+  canBeCarried = false;
+  activeTrash!: Trash;
 
   preload() {
     this.load.image("gameBackground", "https://i.ibb.co/khH5sZ0/map.png");
@@ -62,11 +71,7 @@ export default class Game extends Phaser.Scene {
   init() {
     this.cursorKeys = this.input.keyboard!.createCursorKeys();
   }
-  client = new Client("ws://localhost:2567");
-
-  playerEntities: { [sessionId: string]: any } = {};
-  trashCanEntities: { [key: string]: any } = {};
-  trashEntities: { [key: string]: any } = {};
+  //methods
   private createCan(trashCanItem: any, key: string) {
     const rectWidth = 32;
     const rectHeight = 32;
@@ -108,13 +113,24 @@ export default class Game extends Phaser.Scene {
     const image = this.physics.add.image(imageX, imageY, trashItem.name);
     image.setInteractive(); // if needed
     Object.values(this.playerEntities).forEach((player: PlayerWithPhysics) => {
-      this.physics.add.collider(player, image, this.handleTrashCollision);
+      this.physics.add.collider(
+        player,
+        image,
+        this.handleTrashCollision,
+        undefined,
+        this
+      );
     });
     this.trashEntities[trashItem.name] = image;
   }
-  private handleTrashCollision() {
-    console.log("trash collision");
+
+  private handleTrashCollision(player, trash) {
+    // in here will need to set something on trash to be true to complete a check in the update controllers to allow user to grab that item
+    console.log("collide");
+    console.log(player);
+    console.log(trash);
   }
+
   async create() {
     const bg = this.add.sprite(0, 0, "gameBackground");
     bg.setOrigin(0, 0);
@@ -152,6 +168,7 @@ export default class Game extends Phaser.Scene {
 
           entity.setScale(0.55);
           this.playerEntities[sessionId] = entity;
+          this.playerEntities[sessionId].holdingItem = false;
           this.playerEntities[sessionId].playerNumber = playerNum;
           if (sessionId === this.room.sessionId) {
             this.currentPlayer = entity;
@@ -192,6 +209,7 @@ export default class Game extends Phaser.Scene {
     if (!this.room) {
       return;
     }
+
     const animNum: number = this.currentPlayer.playerNumber || 0;
 
     const velocity = 2;
@@ -200,6 +218,7 @@ export default class Game extends Phaser.Scene {
     this.inputPayload.right = this.cursorKeys.right.isDown;
     this.inputPayload.up = this.cursorKeys.up.isDown;
     this.inputPayload.down = this.cursorKeys.down.isDown;
+
     this.inputPayload.animation =
       this.currentPlayer.anims.currentAnim?.key || null;
 
@@ -231,6 +250,14 @@ export default class Game extends Phaser.Scene {
         }
       }
     }
+    const spaceJustPressed = Phaser.Input.Keyboard.JustUp(
+      this.cursorKeys.space
+    );
+    if (spaceJustPressed) {
+      console.log("grabby");
+      console.log(this.activeTrash);
+    }
+
     this.room.send("updatePlayer", this.inputPayload);
 
     for (let sessionId in this.playerEntities) {
